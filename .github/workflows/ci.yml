@@ -32,7 +32,7 @@ jobs:
         run: |
           echo "${{ secrets.GCP_SERVICE_ACCOUNT_KEY_B64 }}" | base64 -d > $GOOGLE_APPLICATION_CREDENTIALS
           gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
-          gcloud config set project ${{ TF_VAR_project_id }}
+          gcloud config set project johnydev
 
       - name: Validate firewall policy using OPA
         run: |
