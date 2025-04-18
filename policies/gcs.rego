@@ -1,7 +1,10 @@
 package main
 
+default deny = []
+
 deny[msg] {
-  resource := input.resource_changes[_]
+  some i
+  resource := input.resource_changes[i]
   resource.type == "google_storage_bucket_iam_member"
   member := resource.change.after.member
   member == "allUsers" or member == "allAuthenticatedUsers"
