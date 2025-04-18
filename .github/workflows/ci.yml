@@ -1,0 +1,62 @@
+name: GCS Policy Scan
+
+on:
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: gcp-credentials.json
+      TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+      TF_VAR_region: ${{ secrets.GCP_REGION }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Clean up credentials
+        run: |
+          if [ -f "gcp-credentials.json" ]; then
+            rm "gcp-credentials.json"
+          fi
+
+      - name: Decode and write GCP credentials
+        run: |
+          echo "${{ secrets.GCP_SERVICE_ACCOUNT_KEY_B64 }}" | base64 -d > $GOOGLE_APPLICATION_CREDENTIALS
+          gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+          gcloud config set project ${{ TF_VAR_project_id }}
+
+      - name: Validate firewall policy using OPA
+        run: |
+          # Convert the Terraform file to JSON input (OPA doesn't parse HCL directly)
+          terraform init -migrate-state
+          terraform init 
+          terraform plan -out=tfplan.binary -lock=false
+          terraform show -json tfplan.binary > tfplan.json
+
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64
+          chmod +x opa
+          sudo mv opa /usr/local/bin/
+
+      - name: Run OPA policy check (block public GCS)
+        run: |
+          opa eval \
+            --input tfplan.json \
+            --data policies \
+            "data.main.deny" \
+            --fail \
+            --format pretty
+
+      - name: Terraform Apply
+        if: success()
+        run: terraform apply -auto-approve -lock=false tfplan.binary
